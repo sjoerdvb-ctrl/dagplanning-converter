@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="nl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Excel Converter</title>
+
+    <!-- SheetJS: bibliotheek voor Excelbestanden -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        button,
+        select,
+        input {
+            padding: 10px;
+            margin: 5px 0;
+        }
+
+        .download-button {
+            display: inline-block;
+            padding: 12px 20px;
+            margin-top: 20px;
+            background: #2673d9;
+            color: white;
+            border-radius: 5px;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .download-button:hover {
+            background: #1d5eaf;
+        }
+
+        .download-button.disabled {
+            background: #999;
+            opacity: 0.5;
+            pointer-events: none;
+            cursor: not-allowed;
+        }
+
+        #output {
+            margin-top: 25px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <h1>Excel Converter</h1>
+
+    <p>Selecteer een Excelbestand om te converteren.</p>
+
+    <!-- Excelbestand selecteren -->
+    <input type="file" id="excelFile" accept=".xlsx,.xls">
+
+    <!-- Dag selecteren -->
+    <label for="dayOfWeek">Dag van de week:</label>
+
+    <select id="dayOfWeek">
+
+        <option value="">Alle dagen</option>
+        <option value="Maandag">Maandag</option>
+        <option value="Dinsdag">Dinsdag</option>
+        <option value="Woensdag">Woensdag</option>
+        <option value="Donderdag">Donderdag</option>
+        <option value="Vrijdag">Vrijdag</option>
+        <option value="Zaterdag">Zaterdag</option>
+        <option value="Zondag">Zondag</option>
+
+    </select>
+
+    <!-- Downloadknop -->
+    <a id="saveButton" class="download-button disabled" aria-disabled="true">
+        Download Excelbestand
+    </a>
+
+    <!-- Status weergeven -->
+    <div id="output">
+        Selecteer een Excelbestand om te beginnen.
+    </div>
+
+
+    <script>
+
+        // ==========================================
+        // VARIABELEN
+        // ==========================================
+
+        let generatedFile = null;
+        let generatedUrl = null;
+        let buildNumber = 0;
+
+        // HTML-elementen ophalen
+        const fileInput = document.getElementById("excelFile");
+        const dayInput = document.getElementById("dayOfWeek");
+        const saveButton = document.getElementById("saveButton");
+        const output = document.getElementById("output");
+
+
+        // ==========================================
+        // EVENT LISTENERS
+        // ==========================================
+
+        // Nieuwe verwerking starten wanneer bestand verandert
+        fileInput.addEventListener("change", prepareExcel);
+
+        // Opnieuw verwerken wanneer dag verandert
+        dayInput.addEventListener("change", prepareExcel);
+
+
+        // ==========================================
+        // 1. EXCEL INLEZEN EN CONVERTEREN
+        // ==========================================
+
+        async function prepareExcel() {
+
+            const currentBuild = ++buildNumber;
+
+            const file = fileInput.files[0];
+            const inputDay = dayInput.value;
+
+            // Oude resultaten verwijderen
+            generatedFile = null;
+
+            if (generatedUrl) {
+                URL.revokeObjectURL(generatedUrl);
+                generatedUrl = null;
+            }
+
+            saveButton.removeAttribute("href");
+            saveButton.removeAttribute("download");
+
+            saveButton.classList.add("disabled");
+            saveButton.setAttribute("aria-disabled", "true");
+            saveButton.textContent = "Bestand wordt voorbereid...";
+
+            // Controleren of bestand geselecteerd is
+            if (!file) {
+                output.textContent = "Selecteer een Excelbestand.";
+                saveButton.textContent = "Geen bestand geselecteerd";
+                return;
+            }
+
+            try {
+
+                output.textContent = "Excelbestand wordt verwerkt...";
+
+                // Excelbestand inlezen
+                const data = await file.arrayBuffer();
+
+                const workbook = XLSX.read(data);
+
+                // Controleren of dit nog de nieuwste verwerking is
+                if (currentBuild !== buildNumber) return;
+
+
+                // ==========================================
+                // GEGEVENS VERWERKEN
+                // ==========================================
+
+                const header = [
+                    "nummer",
+                    "Naam",
+                    "Aantal",
+                    "Pakket",
+                    "Bericht voor uitgifte"
+                ];
+
+                const newRows = [];
+
+
+                // Alle werkbladen doorlopen
+                workbook.SheetNames.forEach(sheetName => {
+
+                    console.log("Werkblad:", sheetName);
+
+                    const worksheet = workbook.Sheets[sheetName];
+
+                    // Excelgegevens omzetten naar array
+                    const rows = XLSX.utils.sheet_to_json(
+                        worksheet,
+                        {
+                            header: 1,
+                            defval: ""
+                        }
+                    );
+
+                    // Gewenste regels selecteren
+                    rows.forEach(row => {
+
+                        const day = row[19];
+
+                        const matchesDay =
+                            inputDay === ""
+                                ? day !== "" && day !== "Dag van uitgifte"
+                                : day === inputDay;
+
+                        if (matchesDay) {
+
+                            newRows.push([
+                                row[0],   // Nummer
+                                row[1],   // Naam
+                                row[10],  // Aantal
+                                row[38],  // Pakket
+                                row[26]   // Bericht voor uitgifte
+                            ]);
+
+                        }
+
+                    });
+
+                });
+
+
+                // ==========================================
+                // SORTEREN
+                // ==========================================
+
+                const sortedRows = [...newRows].sort((a, b) => {
+
+                    return String(a[4]).localeCompare(
+                        String(b[4]),
+                        "nl"
+                    );
+
+                });
+
+
+                // Resultaat controleren
+                console.log("Aantal regels:", sortedRows.length);
+                console.table(sortedRows);
+
+
+                // ==========================================
+                // NIEUW EXCELBESTAND MAKEN
+                // ==========================================
+
+                const newWorksheet = XLSX.utils.aoa_to_sheet([
+                    header,
+                    ...sortedRows
+                ]);
+
+                const newWorkbook = XLSX.utils.book_new();
+
+                XLSX.utils.book_append_sheet(
+                    newWorkbook,
+                    newWorksheet,
+                    "Intakestatus"
+                );
+
+
+                // ==========================================
+                // BESTANDSNAAM MAKEN
+                // ==========================================
+
+                const outputName =
+                    file.name.replace(/\.[^/.]+$/, "") +
+                    (inputDay !== "" ? "_" + inputDay : "") +
+                    "_converted.xlsx";
+
+
+                // ==========================================
+                // EXCELBESTAND GENEREREN
+                // ==========================================
+
+                const excelData = XLSX.write(newWorkbook, {
+                    bookType: "xlsx",
+                    type: "array"
+                });
+
+                // Nieuw bestand aanmaken
+                generatedFile = new Blob(
+                    [excelData],
+                    {
+                        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    }
+                );
+
+
+                // Controleren of er ondertussen een nieuwe verwerking gestart is
+                if (currentBuild !== buildNumber) return;
+
+
+                // ==========================================
+                // DOWNLOADLINK AANMAKEN
+                // ==========================================
+
+                generatedUrl = URL.createObjectURL(generatedFile);
+
+                saveButton.href = generatedUrl;
+                saveButton.download = outputName;
+
+                saveButton.classList.remove("disabled");
+                saveButton.removeAttribute("aria-disabled");
+
+                saveButton.textContent = "Download Excelbestand";
+
+
+                // ==========================================
+                // STATUS WEERGEVEN
+                // ==========================================
+
+                output.textContent =
+                    "Excelbestand succesvol verwerkt!\n\n" +
+                    "Bestand: " + outputName + "\n" +
+                    "Aantal regels: " + sortedRows.length + "\n"
+
+
+                console.log("Nieuw Excelbestand aangemaakt:", outputName);
+
+            } catch (error) {
+
+                console.error("Fout bij verwerken:", error);
+
+                if (currentBuild !== buildNumber) return;
+
+                output.textContent =
+                    "Er ging iets mis bij het verwerken van het Excelbestand.";
+
+                saveButton.textContent = "Verwerken mislukt";
+
+            }
+
+        }
+
+
+        // ==========================================
+        // 2. URL OPSCHONEN BIJ AFSLUITEN
+        // ==========================================
+
+        window.addEventListener("beforeunload", () => {
+
+            if (generatedUrl) {
+                URL.revokeObjectURL(generatedUrl);
+            }
+
+        });
+
+
+    </script>
+
+</body>
+
+</html>
