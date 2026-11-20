@@ -238,10 +238,27 @@
 
                 const sortedRows = [...newRows].sort((a, b) => {
 
-                    return String(a[4]).localeCompare(
-                        String(b[4]),
-                        "nl"
+                    // Eerste 5 tekens van de laatste kolom
+                    const valueA = String(a[4] ?? "").slice(0, 5);
+                    const valueB = String(b[4] ?? "").slice(0, 5);
+
+                    // Eerst sorteren op de eerste 5 tekens
+                    const primarySort = valueA.localeCompare(
+                        valueB,
+                        "nl",
+                        { numeric: true, sensitivity: "base" }
                     );
+
+                    // Bij gelijke waarden sorteren op kolom 2 (Naam)
+                    if (primarySort === 0) {
+                        return String(a[1] ?? "").localeCompare(
+                            String(b[1] ?? ""),
+                            "nl",
+                            { numeric: true, sensitivity: "base" }
+                        );
+                    }
+
+                    return primarySort;
 
                 });
 
@@ -259,6 +276,24 @@
                     header,
                     ...sortedRows
                 ]);
+                // ==========================================
+                // KOLOMBREEDTES
+                // ==========================================
+
+                const lastColumnWidth = 30;
+
+                newWorksheet["!cols"] = [
+                    { wch: 8 },              // Nummer
+                    { wch: 25 },              // Naam
+                    { wch: 6 },              // Aantal
+                    { wch: 18 },              // Pakket
+                    { wch: lastColumnWidth }  // Bericht voor uitgifte
+                ];
+
+
+                // ==========================================
+                // RIJHOOGTES
+                // ==========================================                
 
                 const newWorkbook = XLSX.utils.book_new();
 
@@ -285,9 +320,9 @@
 
                 const excelData = XLSX.write(newWorkbook, {
                     bookType: "xlsx",
-                    type: "array"
+                    type: "array",
+                    cellStyles: true
                 });
-
                 // Nieuw bestand aanmaken
                 generatedFile = new Blob(
                     [excelData],
